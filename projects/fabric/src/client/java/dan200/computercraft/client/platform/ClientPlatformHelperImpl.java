@@ -18,6 +18,8 @@ import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.entity.ItemRenderer;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.client.resources.model.ModelManager;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ServerCommonPacketListener;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 
@@ -28,8 +30,8 @@ public class ClientPlatformHelperImpl implements ClientPlatformHelper {
     private static final RandomSource random = RandomSource.create(0);
 
     @Override
-    public void sendToServer(NetworkMessage<ServerNetworkContext> message) {
-        ClientPlayNetworking.send(FabricMessageType.toFabricPacket(message));
+    public Packet<ServerCommonPacketListener> createPacket(NetworkMessage<ServerNetworkContext> message) {
+        return ClientPlayNetworking.createC2SPacket(FabricMessageType.toFabricPacket(message));
     }
 
     @Override

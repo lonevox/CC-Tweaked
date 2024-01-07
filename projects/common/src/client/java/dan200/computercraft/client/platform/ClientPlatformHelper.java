@@ -9,6 +9,8 @@ import dan200.computercraft.shared.network.NetworkMessage;
 import dan200.computercraft.shared.network.server.ServerNetworkContext;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.resources.model.BakedModel;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ServerCommonPacketListener;
 
 import javax.annotation.Nullable;
 
@@ -18,11 +20,12 @@ public interface ClientPlatformHelper extends dan200.computercraft.impl.client.C
     }
 
     /**
-     * Send a network message to the server.
+     * Convert a serverbound {@link NetworkMessage} to a Minecraft {@link Packet}.
      *
-     * @param message The message to send.
+     * @param message The messsge to convert.
+     * @return The converted message.
      */
-    void sendToServer(NetworkMessage<ServerNetworkContext> message);
+    Packet<ServerCommonPacketListener> createPacket(NetworkMessage<ServerNetworkContext> message);
 
     /**
      * Render a {@link BakedModel}, using any loader-specific hooks.

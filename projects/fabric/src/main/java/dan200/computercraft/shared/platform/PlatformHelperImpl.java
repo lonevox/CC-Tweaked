@@ -11,7 +11,7 @@ import com.mojang.authlib.GameProfile;
 import com.mojang.brigadier.arguments.ArgumentType;
 import dan200.computercraft.api.ComputerCraftAPI;
 import dan200.computercraft.api.network.wired.WiredElement;
-import dan200.computercraft.api.node.wired.WiredElementLookup;
+import dan200.computercraft.api.network.wired.WiredElementLookup;
 import dan200.computercraft.api.peripheral.IPeripheral;
 import dan200.computercraft.api.peripheral.PeripheralLookup;
 import dan200.computercraft.impl.Peripherals;
@@ -28,7 +28,6 @@ import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.lookup.v1.block.BlockApiCache;
 import net.fabricmc.fabric.api.lookup.v1.block.BlockApiLookup;
-import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.fabricmc.fabric.api.registry.FuelRegistry;
@@ -48,11 +47,9 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.game.ClientGamePacketListener;
+import net.minecraft.network.protocol.common.ClientCommonPacketListener;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.ItemTags;
@@ -77,16 +74,14 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.*;
 
 @AutoService(dan200.computercraft.impl.PlatformHelper.class)
@@ -109,33 +104,8 @@ public class PlatformHelperImpl implements PlatformHelper {
     }
 
     @Override
-    public <T> ResourceLocation getRegistryKey(ResourceKey<Registry<T>> registry, T object) {
-        var key = getRegistry(registry).getKey(object);
-        if (key == null) throw new IllegalArgumentException(object + " was not registered in " + registry);
-        return key;
-    }
-
-    @Override
-    public <T> T getRegistryObject(ResourceKey<Registry<T>> registry, ResourceLocation id) {
-        var value = getRegistry(registry).get(id);
-        if (value == null) throw new IllegalArgumentException(id + " was not registered in " + registry);
-        return value;
-    }
-
-    @Override
-    public <T> RegistryWrappers.RegistryWrapper<T> wrap(ResourceKey<Registry<T>> registry) {
-        return new RegistryWrapperImpl<>(registry.location(), getRegistry(registry));
-    }
-
-    @Override
     public <T> RegistrationHelper<T> createRegistrationHelper(ResourceKey<Registry<T>> registry) {
         return new RegistrationHelperImpl<>(getRegistry(registry));
-    }
-
-    @Nullable
-    @Override
-    public <T> T tryGetRegistryObject(ResourceKey<Registry<T>> registry, ResourceLocation id) {
-        return getRegistry(registry).get(id);
     }
 
     @Override
@@ -176,54 +146,23 @@ public class PlatformHelperImpl implements PlatformHelper {
     }
 
     @Override
-    public <T extends NetworkMessage<?>> MessageType<T> createMessageType(int id, ResourceLocation channel, Class<T> klass, FriendlyByteBuf.Reader<T> reader) {
+    public <T extends NetworkMessage<?>> MessageType<T> createMessageType(ResourceLocation channel, FriendlyByteBuf.Reader<T> reader) {
         return new FabricMessageType<>(channel, reader);
     }
 
-    private Packet<ClientGamePacketListener> encodeClientbound(NetworkMessage<ClientNetworkContext> message) {
-        var buf = PacketByteBufs.create();
-        message.write(buf);
-        return ServerPlayNetworking.createS2CPacket(FabricMessageType.toFabricType(message.type()).getId(), buf);
+    @Override
+    public Packet<ClientCommonPacketListener> createPacket(NetworkMessage<ClientNetworkContext> message) {
+        return ServerPlayNetworking.createS2CPacket(FabricMessageType.toFabricPacket(message));
     }
 
     @Override
-    public void sendToPlayer(NetworkMessage<ClientNetworkContext> message, ServerPlayer player) {
-        player.connection.send(encodeClientbound(message));
+    public ComponentAccess<IPeripheral> createPeripheralAccess(BlockEntity owner, Consumer<Direction> invalidate) {
+        return new PeripheralAccessImpl(owner);
     }
 
     @Override
-    public void sendToPlayers(NetworkMessage<ClientNetworkContext> message, Collection<ServerPlayer> players) {
-        if (players.isEmpty()) return;
-        var packet = encodeClientbound(message);
-        for (var player : players) player.connection.send(packet);
-    }
-
-    @Override
-    public void sendToAllPlayers(NetworkMessage<ClientNetworkContext> message, MinecraftServer server) {
-        server.getPlayerList().broadcastAll(encodeClientbound(message));
-    }
-
-    @Override
-    public void sendToAllAround(NetworkMessage<ClientNetworkContext> message, ServerLevel level, Vec3 pos, float distance) {
-        level.getServer().getPlayerList().broadcast(null, pos.x, pos.y, pos.z, distance, level.dimension(), encodeClientbound(message));
-    }
-
-    @Override
-    public void sendToAllTracking(NetworkMessage<ClientNetworkContext> message, LevelChunk chunk) {
-        var packet = encodeClientbound(message);
-        for (var player : ((ServerChunkCache) chunk.getLevel().getChunkSource()).chunkMap.getPlayers(chunk.getPos(), false)) {
-            player.connection.send(packet);
-        }
-    }
-
-    @Override
-    public ComponentAccess<IPeripheral> createPeripheralAccess(Consumer<Direction> invalidate) {
-        return new PeripheralAccessImpl(invalidate);
-    }
-
-    @Override
-    public ComponentAccess<WiredElement> createWiredElementAccess(Consumer<Direction> invalidate) {
-        return new ComponentAccessImpl<>(WiredElementLookup.get());
+    public ComponentAccess<WiredElement> createWiredElementAccess(BlockEntity owner, Consumer<Direction> invalidate) {
+        return new ComponentAccessImpl<>(owner, WiredElementLookup.get());
     }
 
     @Override
@@ -354,50 +293,6 @@ public class PlatformHelperImpl implements PlatformHelper {
         return stack.useOn(new UseOnContext(player, InteractionHand.MAIN_HAND, hit));
     }
 
-    private record RegistryWrapperImpl<T>(
-        ResourceLocation name, Registry<T> registry
-    ) implements RegistryWrappers.RegistryWrapper<T> {
-        @Override
-        public int getId(T object) {
-            return registry.getId(object);
-        }
-
-        @Override
-        public ResourceLocation getKey(T object) {
-            var key = registry.getKey(object);
-            if (key == null) throw new IllegalArgumentException(object + " was not registered in " + name);
-            return key;
-        }
-
-        @Override
-        public T get(ResourceLocation location) {
-            var object = registry.get(location);
-            if (object == null) throw new IllegalArgumentException(location + " was not registered in " + name);
-            return object;
-        }
-
-        @Nullable
-        @Override
-        public T tryGet(ResourceLocation location) {
-            return registry.get(location);
-        }
-
-        @Override
-        public @Nullable T byId(int id) {
-            return registry.byId(id);
-        }
-
-        @Override
-        public int size() {
-            return registry.size();
-        }
-
-        @Override
-        public Iterator<T> iterator() {
-            return registry.iterator();
-        }
-    }
-
     private static final class RegistrationHelperImpl<T> implements RegistrationHelper<T> {
         private final Registry<T> registry;
         private final List<RegistryEntryImpl<? extends T>> entries = new ArrayList<>();
@@ -464,50 +359,46 @@ public class PlatformHelperImpl implements PlatformHelper {
     }
 
     private static class ComponentAccessImpl<T> implements ComponentAccess<T> {
+        private final BlockEntity owner;
         private final BlockApiLookup<T, Direction> lookup;
         @SuppressWarnings({ "unchecked", "rawtypes" })
         final BlockApiCache<T, Direction>[] caches = new BlockApiCache[6];
-        private @Nullable Level level;
-        private @Nullable BlockPos pos;
 
-        private ComponentAccessImpl(BlockApiLookup<T, Direction> lookup) {
+        private ComponentAccessImpl(BlockEntity owner, BlockApiLookup<T, Direction> lookup) {
+            this.owner = owner;
             this.lookup = lookup;
         }
 
         @Nullable
         @Override
-        public T get(ServerLevel level, BlockPos pos, Direction direction) {
-            if (this.level != null && this.level != level) throw new IllegalStateException("Level has changed");
-            if (this.pos != null && this.pos != pos) throw new IllegalStateException("Position has changed");
-
-            this.level = level;
-            this.pos = pos;
+        public T get(Direction direction) {
+            var level = getLevel();
             var cache = caches[direction.ordinal()];
             if (cache == null) {
-                cache = caches[direction.ordinal()] = BlockApiCache.create(lookup, level, pos.relative(direction));
+                cache = caches[direction.ordinal()] = BlockApiCache.create(lookup, level, owner.getBlockPos().relative(direction));
             }
 
             return cache.find(direction.getOpposite());
         }
+
+        final ServerLevel getLevel() {
+            return Objects.requireNonNull((ServerLevel) owner.getLevel(), "Block entity is not in a level");
+        }
     }
 
     private static final class PeripheralAccessImpl extends ComponentAccessImpl<IPeripheral> {
-        private final Runnable[] invalidators = new Runnable[6];
-
-        private PeripheralAccessImpl(Consumer<Direction> invalidate) {
-            super(PeripheralLookup.get());
-            for (var dir : Direction.values()) invalidators[dir.ordinal()] = () -> invalidate.accept(dir);
+        private PeripheralAccessImpl(BlockEntity owner) {
+            super(owner, PeripheralLookup.get());
         }
 
         @Nullable
         @Override
-        public IPeripheral get(ServerLevel level, BlockPos pos, Direction direction) {
-            var result = super.get(level, pos, direction);
+        public IPeripheral get(Direction direction) {
+            var result = super.get(direction);
             if (result != null) return result;
 
             var cache = caches[direction.ordinal()];
-            var invalidate = invalidators[direction.ordinal()];
-            return Peripherals.getGenericPeripheral(level, cache.getPos(), direction.getOpposite(), cache.getBlockEntity(), invalidate);
+            return Peripherals.getGenericPeripheral(cache.getWorld(), cache.getPos(), direction.getOpposite(), cache.getBlockEntity());
         }
     }
 }

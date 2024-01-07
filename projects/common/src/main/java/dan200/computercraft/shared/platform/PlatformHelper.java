@@ -20,9 +20,10 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.common.ClientCommonPacketListener;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerPlayerGameMode;
@@ -44,12 +45,10 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
-import java.util.Collection;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -85,15 +84,6 @@ public interface PlatformHelper extends dan200.computercraft.impl.PlatformHelper
     ConfigFile.Builder createConfigBuilder();
 
     /**
-     * Wrap a Minecraft registry in our own abstraction layer.
-     *
-     * @param registry The registry to wrap.
-     * @param <T>      The type of object stored in this registry.
-     * @return The wrapped registry.
-     */
-    <T> RegistryWrappers.RegistryWrapper<T> wrap(ResourceKey<Registry<T>> registry);
-
-    /**
      * Create a registration helper for a specific registry.
      *
      * @param registry The registry we'll add entries to.
@@ -101,17 +91,6 @@ public interface PlatformHelper extends dan200.computercraft.impl.PlatformHelper
      * @return The registration helper.
      */
     <T> RegistrationHelper<T> createRegistrationHelper(ResourceKey<Registry<T>> registry);
-
-    /**
-     * A version of {@link #getRegistryObject(ResourceKey, ResourceLocation)} which allows missing entries.
-     *
-     * @param registry The registry to look up this object in.
-     * @param id       The ID to look up.
-     * @param <T>      The type of object the registry stores.
-     * @return The registered object or {@code null}.
-     */
-    @Nullable
-    <T> T tryGetRegistryObject(ResourceKey<Registry<T>> registry, ResourceLocation id);
 
     /**
      * Determine if this resource should be loaded, based on platform-specific loot conditions.
@@ -168,74 +147,40 @@ public interface PlatformHelper extends dan200.computercraft.impl.PlatformHelper
     /**
      * Create a new {@link MessageType}.
      *
-     * @param id      The descriminator for this message type.
-     * @param channel The channel name for this message type.
-     * @param klass   The type of this message.
-     * @param reader  The function which reads the packet from a buffer. Should be the inverse to {@link NetworkMessage#write(FriendlyByteBuf)}.
-     * @param <T>     The type of this message.
+     * @param <T>    The type of this message.
+     * @param id     The id for this message type.
+     * @param reader The function which reads the packet from a buffer. Should be the inverse to {@link NetworkMessage#write(FriendlyByteBuf)}.
      * @return The new {@link MessageType} instance.
      */
-    <T extends NetworkMessage<?>> MessageType<T> createMessageType(int id, ResourceLocation channel, Class<T> klass, FriendlyByteBuf.Reader<T> reader);
+    <T extends NetworkMessage<?>> MessageType<T> createMessageType(ResourceLocation id, FriendlyByteBuf.Reader<T> reader);
 
     /**
-     * Send a message to a specific player.
+     * Convert a clientbound {@link NetworkMessage} to a Minecraft {@link Packet}.
      *
-     * @param message The message to send.
-     * @param player  The player to send it to.
+     * @param message The messsge to convert.
+     * @return The converted message.
      */
-    void sendToPlayer(NetworkMessage<ClientNetworkContext> message, ServerPlayer player);
-
-    /**
-     * Send a message to a set of players.
-     *
-     * @param message The message to send.
-     * @param players The players to send it to.
-     */
-    void sendToPlayers(NetworkMessage<ClientNetworkContext> message, Collection<ServerPlayer> players);
-
-    /**
-     * Send a message to all players.
-     *
-     * @param message The message to send.
-     * @param server  The current server.
-     */
-    void sendToAllPlayers(NetworkMessage<ClientNetworkContext> message, MinecraftServer server);
-
-    /**
-     * Send a message to all players around a point.
-     *
-     * @param message  The message to send.
-     * @param level    The level the point is in.
-     * @param pos      The centre position.
-     * @param distance The distance to the centre players must be within.
-     */
-    void sendToAllAround(NetworkMessage<ClientNetworkContext> message, ServerLevel level, Vec3 pos, float distance);
-
-    /**
-     * Send a message to all players tracking a chunk.
-     *
-     * @param message The message to send.
-     * @param chunk   The chunk players must be tracking.
-     */
-    void sendToAllTracking(NetworkMessage<ClientNetworkContext> message, LevelChunk chunk);
+    Packet<ClientCommonPacketListener> createPacket(NetworkMessage<ClientNetworkContext> message);
 
     /**
      * Create a {@link ComponentAccess} for surrounding peripherals.
      *
+     * @param owner      The block entity requesting surrounding peripherals.
      * @param invalidate The function to call when a neighbouring peripheral potentially changes. This <em>MAY NOT</em>
      *                   include all changes, and so block updates should still be listened to.
      * @return The peripheral component access.
      */
-    ComponentAccess<IPeripheral> createPeripheralAccess(Consumer<Direction> invalidate);
+    ComponentAccess<IPeripheral> createPeripheralAccess(BlockEntity owner, Consumer<Direction> invalidate);
 
     /**
      * Create a {@link ComponentAccess} for surrounding wired nodes.
      *
+     * @param owner      The block entity requesting surrounding wired elements.
      * @param invalidate The function to call when a neighbouring wired node potentially changes. This <em>MAY NOT</em>
      *                   include all changes, and so block updates should still be listened to.
      * @return The peripheral component access.
      */
-    ComponentAccess<WiredElement> createWiredElementAccess(Consumer<Direction> invalidate);
+    ComponentAccess<WiredElement> createWiredElementAccess(BlockEntity owner, Consumer<Direction> invalidate);
 
     /**
      * Determine if there is a wired element in the given direction. This is equivalent to

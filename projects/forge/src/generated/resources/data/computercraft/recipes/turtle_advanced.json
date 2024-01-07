@@ -7,6 +7,5 @@
     "I": {"tag": "forge:chests/wooden"}
   },
   "pattern": ["###", "#C#", "#I#"],
-  "result": {"item": "computercraft:turtle_advanced"},
-  "show_notification": true
+  "result": {"item": "computercraft:turtle_advanced"}
 }

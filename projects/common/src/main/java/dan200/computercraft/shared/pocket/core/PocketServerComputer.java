@@ -4,7 +4,6 @@
 
 package dan200.computercraft.shared.pocket.core;
 
-import dan200.computercraft.api.peripheral.IPeripheral;
 import dan200.computercraft.api.pocket.IPocketAccess;
 import dan200.computercraft.api.pocket.IPocketUpgrade;
 import dan200.computercraft.api.upgrades.UpgradeData;
@@ -15,11 +14,10 @@ import dan200.computercraft.shared.computer.core.ServerComputer;
 import dan200.computercraft.shared.config.Config;
 import dan200.computercraft.shared.network.client.PocketComputerDataMessage;
 import dan200.computercraft.shared.network.client.PocketComputerDeletedClientMessage;
-import dan200.computercraft.shared.platform.PlatformHelper;
+import dan200.computercraft.shared.network.server.ServerNetworking;
 import dan200.computercraft.shared.pocket.items.PocketComputerItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -29,7 +27,10 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
 import javax.annotation.Nullable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 public class PocketServerComputer extends ServerComputer implements IPocketAccess {
     private @Nullable IPocketUpgrade upgrade;
@@ -104,12 +105,6 @@ public class PocketServerComputer extends ServerComputer implements IPocketAcces
         setPeripheral(ComputerSide.BACK, peripheral);
     }
 
-    @Override
-    @Deprecated(forRemoval = true)
-    public Map<ResourceLocation, IPeripheral> getUpgrades() {
-        return upgrade == null ? Map.of() : Collections.singletonMap(upgrade.getUpgradeID(), getPeripheral(ComputerSide.BACK));
-    }
-
     public @Nullable UpgradeData<IPocketUpgrade> getUpgrade() {
         return upgrade == null ? null : UpgradeData.of(upgrade, getUpgradeNBTData());
     }
@@ -161,7 +156,7 @@ public class PocketServerComputer extends ServerComputer implements IPocketAcces
         if (sendState) {
             // Broadcast the state to all players
             tracking.addAll(getLevel().players());
-            PlatformHelper.get().sendToPlayers(new PocketComputerDataMessage(this, false), tracking);
+            ServerNetworking.sendToPlayers(new PocketComputerDataMessage(this, false), tracking);
         } else {
             // Broadcast the state to new players.
             List<ServerPlayer> added = new ArrayList<>();
@@ -169,7 +164,7 @@ public class PocketServerComputer extends ServerComputer implements IPocketAcces
                 if (tracking.add(player)) added.add(player);
             }
             if (!added.isEmpty()) {
-                PlatformHelper.get().sendToPlayers(new PocketComputerDataMessage(this, false), added);
+                ServerNetworking.sendToPlayers(new PocketComputerDataMessage(this, false), added);
             }
         }
     }
@@ -180,13 +175,13 @@ public class PocketServerComputer extends ServerComputer implements IPocketAcces
 
         if (entity instanceof ServerPlayer player && entity.isAlive()) {
             // Broadcast the terminal to the current player.
-            PlatformHelper.get().sendToPlayer(new PocketComputerDataMessage(this, true), player);
+            ServerNetworking.sendToPlayer(new PocketComputerDataMessage(this, true), player);
         }
     }
 
     @Override
     protected void onRemoved() {
         super.onRemoved();
-        PlatformHelper.get().sendToAllPlayers(new PocketComputerDeletedClientMessage(getInstanceID()), getLevel().getServer());
+        ServerNetworking.sendToAllPlayers(new PocketComputerDeletedClientMessage(getInstanceID()), getLevel().getServer());
     }
 }

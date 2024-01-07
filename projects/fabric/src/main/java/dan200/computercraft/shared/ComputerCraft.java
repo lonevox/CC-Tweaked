@@ -6,7 +6,7 @@ package dan200.computercraft.shared;
 
 import dan200.computercraft.api.ComputerCraftAPI;
 import dan200.computercraft.api.detail.FabricDetailRegistries;
-import dan200.computercraft.api.node.wired.WiredElementLookup;
+import dan200.computercraft.api.network.wired.WiredElementLookup;
 import dan200.computercraft.api.peripheral.PeripheralLookup;
 import dan200.computercraft.impl.Peripherals;
 import dan200.computercraft.shared.command.CommandComputerCraft;
@@ -15,6 +15,7 @@ import dan200.computercraft.shared.config.ConfigSpec;
 import dan200.computercraft.shared.details.FluidDetails;
 import dan200.computercraft.shared.network.NetworkMessages;
 import dan200.computercraft.shared.network.client.UpgradesLoadedMessage;
+import dan200.computercraft.shared.network.server.ServerNetworking;
 import dan200.computercraft.shared.peripheral.commandblock.CommandBlockPeripheral;
 import dan200.computercraft.shared.peripheral.generic.methods.InventoryMethods;
 import dan200.computercraft.shared.peripheral.modem.wired.CableBlockEntity;
@@ -22,7 +23,6 @@ import dan200.computercraft.shared.peripheral.modem.wired.WiredModemFullBlockEnt
 import dan200.computercraft.shared.peripheral.modem.wireless.WirelessModemBlockEntity;
 import dan200.computercraft.shared.platform.FabricConfigFile;
 import dan200.computercraft.shared.platform.FabricMessageType;
-import dan200.computercraft.shared.platform.PlatformHelper;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -33,6 +33,7 @@ import net.fabricmc.fabric.api.loot.v2.LootTableEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
@@ -85,14 +86,17 @@ public class ComputerCraft {
 
         // Register hooks
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
-            ((FabricConfigFile) ConfigSpec.serverSpec).load(server.getWorldPath(SERVERCONFIG).resolve(ComputerCraftAPI.MOD_ID + "-server.toml"));
+            ((FabricConfigFile) ConfigSpec.serverSpec).load(
+                server.getWorldPath(SERVERCONFIG).resolve(ComputerCraftAPI.MOD_ID + "-server.toml"),
+                FabricLoader.getInstance().getConfigDir().resolve(ComputerCraftAPI.MOD_ID + "-server.toml")
+            );
             CommonHooks.onServerStarting(server);
         });
         ServerLifecycleEvents.SERVER_STOPPED.register(s -> {
             CommonHooks.onServerStopped();
             ((FabricConfigFile) ConfigSpec.serverSpec).unload();
         });
-        ServerLifecycleEvents.SYNC_DATA_PACK_CONTENTS.register((player, joined) -> PlatformHelper.get().sendToPlayer(new UpgradesLoadedMessage(), player));
+        ServerLifecycleEvents.SYNC_DATA_PACK_CONTENTS.register((player, joined) -> ServerNetworking.sendToPlayer(new UpgradesLoadedMessage(), player));
 
         ServerTickEvents.START_SERVER_TICK.register(CommonHooks::onServerTickStart);
         ServerTickEvents.START_SERVER_TICK.register(s -> CommonHooks.onServerTickEnd());
@@ -116,7 +120,7 @@ public class ComputerCraft {
 
         ComputerCraftAPI.registerGenericSource(new InventoryMethods());
 
-        Peripherals.addGenericLookup((world, pos, state, blockEntity, side, invalidate) -> InventoryMethods.extractContainer(world, pos, state, blockEntity, side));
+        Peripherals.addGenericLookup(InventoryMethods::extractContainer);
     }
 
     private record ReloadListener(String name, PreparableReloadListener listener)
